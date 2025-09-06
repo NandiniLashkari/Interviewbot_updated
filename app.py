@@ -281,7 +281,6 @@ def generate_questions():
             f"{resume_text}\n\n"
             f"And for a job with this description:\n"
             f"{job_description}\n\n"
-            f"The first question should be a concise introductory question about the candidate's background (e.g., 'Can you briefly describe your background?').\n"
         )
         if previous_answer:
             prompt += (
@@ -342,11 +341,11 @@ def generate_questions():
         response = make_response(jsonify({
             "status": "fallback",
             "questions": [
-                "Can you briefly describe your background?",
                 "What are your key strengths for this role?",
                 "How do you handle tight deadlines?",
                 "Why are you interested in this position?",
-                "Describe a time you worked in a team."
+                "Describe a time you worked in a team.",
+                "What challenges have you faced in projects?"
             ][0:num_questions],
             "error": str(e)
         }), 200)
@@ -551,4 +550,4 @@ def generate_summary():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.1', port=5000)

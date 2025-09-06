@@ -257,7 +257,7 @@
                         alert("Screen recording permission denied or failed.");
                     });
 
-                    speakWithAnimation(`Hello ${userName}, let's start your mock interview!`, async () => {
+                    speakWithAnimation(`Hello ${userName}, ready for your interview? Let's begin!`, async () => {
                         isInterviewMode = true;
                         console.log('Fetching initial questions');
                         const success = await generateQuestions(userData.job_description, userData.resume_text);
@@ -272,7 +272,7 @@
                         }
                     }, 'bowGreeet');
                 } else {
-                    speakWithAnimation("Welcome! I couldn't find your details. Please go back and submit your information.", () => {
+                    speakWithAnimation("Welcome! I couldn't find your details. Please submit your information.", () => {
                         window.location.href = '/index.html';
                     }, 'talking');
                 }
@@ -635,7 +635,7 @@
                             }
                             if (currentQuestionIndex >= interviewQuestions.length) {
                                 speakWithAnimation(
-                                    "That's all! Good job! Let's prepare your summary.",
+                                    "That's all! Great job! Let's prepare your summary.",
                                     async () => {
                                         isInterviewMode = false;
                                         if (screenRecorder && screenRecorder.state !== "inactive") {
