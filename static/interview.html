@@ -103,9 +103,9 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script>
-        // ElevenLabs API configuration (replace with your actual key)
-        const ELEVENLABS_API_KEY = 'sk_a3881bc8fb620032b8dc769691f6fe1818034ed67f6c22eb'; // Get from https://elevenlabs.io/app/profile/api-keys
-        const ELEVENLABS_VOICE_ID = 'tKZQTIqwDrPzLv6MrPxF'; // Sana voice ID
+        // ElevenLabs API configuration
+        const ELEVENLABS_API_KEY = 'sk_a3881bc8fb620032b8dc769691f6fe1818034ed67f6c22eb';
+        const ELEVENLABS_VOICE_ID = 'tKZQTIqwDrPzLv6MrPxF';
 
         // Function to clean text
         function cleanText(text) {
@@ -164,7 +164,6 @@
         let interviewAnswers = [];
         let screenRecorder;
         let recordedChunks = [];
-        let isIntroductionPhase = true;
         let userData = null;
 
         const loader = new THREE.GLTFLoader();
@@ -258,10 +257,19 @@
                         alert("Screen recording permission denied or failed.");
                     });
 
-                    speakWithAnimation(`Hello ${userName}, welcome to your mock interview! To get started, please tell me about yourself.`, () => {
+                    speakWithAnimation(`Hello ${userName}, let's start your mock interview!`, async () => {
                         isInterviewMode = true;
-                        isIntroductionPhase = true;
-                        setTimeout(startListening, 500);
+                        console.log('Fetching initial questions');
+                        const success = await generateQuestions(userData.job_description, userData.resume_text);
+                        if (success) {
+                            console.log('Questions generated, asking first question');
+                            askNextQuestion();
+                        } else {
+                            console.error('Failed to generate questions');
+                            speakWithAnimation("I couldn't generate questions. Please try again.", () => {
+                                window.location.href = '/index.html';
+                            }, 'talking');
+                        }
                     }, 'bowGreeet');
                 } else {
                     speakWithAnimation("Welcome! I couldn't find your details. Please go back and submit your information.", () => {
@@ -296,7 +304,7 @@
 
         async function generateQuestions(jobDescription, resumeText, previousAnswer = '') {
             try {
-                const numQuestions = Math.floor(Math.random() * 3) + 3;
+                const numQuestions = Math.floor(Math.random() * 2) + 4; // Random 4 or 5 questions
                 console.log('Generating questions:', { numQuestions, jobDescription, previousAnswer });
                 const response = await fetch('http://127.0.0.1:5000/generate_questions', {
                     method: 'POST',
@@ -591,7 +599,7 @@
                 return;
             }
             recognition = new SpeechRecognition();
-            recognition.continuous = false; // Changed to false to ensure single response
+            recognition.continuous = false;
             recognition.interimResults = false;
             recognition.lang = 'en-US';
             recognition.onstart = () => {
@@ -606,68 +614,51 @@
 
                 if (isInterviewMode) {
                     interviewAnswers.push({
-                        question: isIntroductionPhase ? "Tell me about yourself" : interviewQuestions[currentQuestionIndex],
+                        question: interviewQuestions[currentQuestionIndex],
                         answer: transcript
                     });
 
-                    if (isIntroductionPhase) {
-                        speakWithAnimation(`Thank you for sharing, ${userName}. Let's move on to the next part of the interview.`, async () => {
-                            isIntroductionPhase = false;
-                            console.log('Fetching questions after introduction');
-                            const success = await generateQuestions(userData.job_description, userData.resume_text);
-                            if (success) {
-                                console.log('Questions generated, asking next question');
-                                askNextQuestion();
+                    speakWithAnimation(`Let me review your answer...`, async () => {
+                        const geminiResponse = await fetchFromGemini(`Provide short feedback in 1-2 sentences on this interview answer: "${transcript}"`);
+                        speakWithAnimation(geminiResponse, async () => {
+                            currentQuestionIndex++;
+                            if (currentQuestionIndex < interviewQuestions.length && Math.random() < 0.5) {
+                                console.log('Generating follow-up question based on:', transcript);
+                                const followUpSuccess = await generateQuestions(
+                                    userData.job_description,
+                                    userData.resume_text,
+                                    transcript
+                                );
+                                if (followUpSuccess) {
+                                    currentQuestionIndex = 0;
+                                }
+                            }
+                            if (currentQuestionIndex >= interviewQuestions.length) {
+                                speakWithAnimation(
+                                    "That's all! Good job! Let's prepare your summary.",
+                                    async () => {
+                                        isInterviewMode = false;
+                                        if (screenRecorder && screenRecorder.state !== "inactive") {
+                                            screenRecorder.stop();
+                                        }
+                                        console.log('Storing answers:', interviewAnswers);
+                                        await fetch('http://127.0.0.1:5000/store_answers', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ answers: interviewAnswers })
+                                        }).catch(err => console.error('Error storing answers:', err));
+                                        const summary = await generateInterviewSummary(interviewAnswers);
+                                        speakWithAnimation("Here's your interview summary.", () => {
+                                            speakWithAnimation(summary, finishInterview, 'talking');
+                                        }, 'talking');
+                                    },
+                                    'bowGreeet'
+                                );
                             } else {
-                                console.error('Failed to generate questions');
-                                speakWithAnimation("I couldn't generate questions. Please try again.", () => {
-                                    window.location.href = '/index.html';
-                                }, 'talking');
+                                askNextQuestion();
                             }
                         }, 'talking');
-                    } else {
-                        speakWithAnimation(`Let me review your answer...`, async () => {
-                            const geminiResponse = await fetchFromGemini(transcript);
-                            speakWithAnimation(geminiResponse, async () => {
-                                currentQuestionIndex++;
-                                if (currentQuestionIndex < interviewQuestions.length && Math.random() < 0.3) {
-                                    console.log('Generating follow-up question based on:', transcript);
-                                    const followUpSuccess = await generateQuestions(
-                                        userData.job_description,
-                                        userData.resume_text,
-                                        transcript
-                                    );
-                                    if (followUpSuccess) {
-                                        currentQuestionIndex = 0;
-                                    }
-                                }
-                                if (currentQuestionIndex >= interviewQuestions.length) {
-                                    speakWithAnimation(
-                                        "That was the last question. Good job! Your interview practice is complete.",
-                                        async () => {
-                                            isInterviewMode = false;
-                                            if (screenRecorder && screenRecorder.state !== "inactive") {
-                                                screenRecorder.stop();
-                                            }
-                                            console.log('Storing answers:', interviewAnswers);
-                                            await fetch('http://127.0.0.1:5000/store_answers', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ answers: interviewAnswers })
-                                            }).catch(err => console.error('Error storing answers:', err));
-                                            const summary = await generateInterviewSummary(interviewAnswers);
-                                            speakWithAnimation("Here is your interview summary report.", () => {
-                                                speakWithAnimation(summary, finishInterview, 'talking');
-                                            }, 'talking');
-                                        },
-                                        'bowGreeet'
-                                    );
-                                } else {
-                                    askNextQuestion();
-                                }
-                            }, 'talking');
-                        }, 'thinking');
-                    }
+                    }, 'thinking');
                 }
             };
 
@@ -725,7 +716,7 @@
                 if (screenRecorder && screenRecorder.state !== "inactive") {
                     screenRecorder.stop();
                 }
-                speakWithAnimation("Interview session ended because you changed the tab.", () => {
+                speakWithAnimation("Interview ended due to tab change.", () => {
                     window.location.href = '/index.html';
                 }, 'talking');
                 currentQuestionIndex = interviewQuestions.length;
@@ -735,7 +726,7 @@
 
         function askNextQuestion() {
             if (currentQuestionIndex >= interviewQuestions.length) {
-                speakWithAnimation("That was the last question. Well done! Let me prepare your interview summary.", async () => {
+                speakWithAnimation("That's all! Well done! Let's prepare your summary.", async () => {
                     isInterviewMode = false;
                     if (screenRecorder && screenRecorder.state !== "inactive") {
                         screenRecorder.stop();
@@ -747,7 +738,7 @@
                         body: JSON.stringify({ answers: interviewAnswers })
                     }).catch(err => console.error('Error storing answers:', err));
                     const summary = await generateInterviewSummary(interviewAnswers);
-                    speakWithAnimation("Here is your interview summary report.", () => {
+                    speakWithAnimation("Here's your interview summary.", () => {
                         speakWithAnimation(summary, finishInterview, 'talking');
                     }, 'talking');
                 }, 'bowGreeet');

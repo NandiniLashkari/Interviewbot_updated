@@ -277,18 +277,19 @@ def generate_questions():
             return response
 
         prompt = (
-            f"Generate {num_questions} interview questions for a candidate whose resume is:\n"
+            f"Generate {num_questions} short and direct interview questions for a candidate whose resume is:\n"
             f"{resume_text}\n\n"
             f"And for a job with this description:\n"
             f"{job_description}\n\n"
+            f"The first question should be a concise introductory question about the candidate's background (e.g., 'Can you briefly describe your background?').\n"
         )
         if previous_answer:
             prompt += (
                 f"The candidate's previous answer was:\n"
                 f"{previous_answer}\n\n"
-                f"Include at least one follow-up question based on this answer.\n"
+                f"Include at least one short follow-up question based on this answer.\n"
             )
-        prompt += "Provide the questions in plain text, numbered 1 to {num_questions}."
+        prompt += f"Provide the questions in plain text, numbered 1 to {num_questions}, each question under 15 words."
 
         api_key = "AIzaSyB3K47UGq3dVh_VZZvNpbNuqfiB8v-F-ys"
         if not api_key:
@@ -300,7 +301,7 @@ def generate_questions():
             return response
         genai.configure(api_key=api_key)
         try:
-            model = genai.GenerativeModel("gemini-1.5-flash")  # Corrected model name
+            model = genai.GenerativeModel("gemini-1.5-flash")
         except Exception as e:
             logger.error(f"Failed to load model: {str(e)}")
             response = make_response(jsonify({"status": "error", "error": str(e)}), 500)
@@ -341,12 +342,12 @@ def generate_questions():
         response = make_response(jsonify({
             "status": "fallback",
             "questions": [
-                "Can you tell me about a challenging project you worked on?",
+                "Can you briefly describe your background?",
                 "What are your key strengths for this role?",
                 "How do you handle tight deadlines?",
                 "Why are you interested in this position?",
                 "Describe a time you worked in a team."
-            ].slice(0, num_questions),
+            ][0:num_questions],
             "error": str(e)
         }), 200)
         response.headers['Access-Control-Allow-Origin'] = '*'
@@ -377,10 +378,14 @@ def generate_response():
             return response
         genai.configure(api_key=api_key)
         try:
-            model = genai.GenerativeModel("gemini-2.0-flash")
-        except Exception as e:
-            logger.warning(f"Failed to load gemini-2.0-flash: {str(e)}. Falling back to gemini-1.5-flash")
             model = genai.GenerativeModel("gemini-1.5-flash")
+        except Exception as e:
+            logger.error(f"Failed to load model: {str(e)}")
+            response = make_response(jsonify({"status": "error", "error": str(e)}), 500)
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Content-Type'] = 'application/json'
+            logger.debug("Response headers: %s", response.headers)
+            return response
         response = model.generate_content(prompt)
 
         response_text = response.text if hasattr(response, "text") else None
@@ -544,9 +549,6 @@ def generate_summary():
 
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
-
-
-
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
